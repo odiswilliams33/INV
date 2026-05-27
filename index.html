@@ -41,37 +41,89 @@
 <nav class="tabs"><button class="tab active" data-screen="inventory">Inventory</button><button class="tab" data-screen="add">Add Item</button><button class="tab" data-screen="templates">Templates</button></nav>
 <div id="toast" class="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js">
+
+
+/* --- Auto SKU Fix --- */
+function readInventoryForSku() {
+    try {
+        if (Array.isArray(window.inventory)) return window.inventory;
+        return JSON.parse(localStorage.getItem('inventory') || '[]');
+    } catch (e) {
+        return [];
+    }
+}
+
 function getNextSku() {
-    const inventory = JSON.parse(localStorage.getItem('inventory') || '[]');
+    const items = readInventoryForSku();
+    const numericSkus = items
+        .map(item => String(item.sku || '').trim())
+        .filter(sku => /^\d+$/.test(sku))
+        .map(sku => parseInt(sku, 10));
 
-    if (inventory.length === 0) {
-        return '1000';
-    }
-
-    const numericSkus = inventory
-        .map(item => parseInt(item.sku))
-        .filter(num => !isNaN(num));
-
-    if (numericSkus.length === 0) {
-        return '1000';
-    }
-
+    if (numericSkus.length === 0) return '1000';
     return String(Math.max(...numericSkus) + 1);
 }
 
-function populateNextSku() {
-    const skuInput = document.getElementById('sku');
-    if (skuInput) {
+function populateNextSku(force = true) {
+    const skuInput =
+        document.getElementById('sku') ||
+        document.getElementById('item-sku') ||
+        document.querySelector('input[name="sku"]');
+
+    if (!skuInput) return;
+
+    if (force || !skuInput.value.trim()) {
         skuInput.value = getNextSku();
+        skuInput.dispatchEvent(new Event('input', { bubbles: true }));
+        skuInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
 }
+
+function clearAddItemFormAndRefreshSku() {
+    const form =
+        document.getElementById('add-item-form') ||
+        document.querySelector('form');
+
+    if (form) form.reset();
+
+    if (typeof descriptionQuill !== 'undefined' && descriptionQuill) {
+        descriptionQuill.setContents([]);
+    }
+
+    populateNextSku(true);
+}
+
+window.addEventListener('load', function () {
+    populateNextSku(true);
+
+    const addTabButtons = Array.from(document.querySelectorAll('button, .tab-button, [data-tab]'));
+    addTabButtons.forEach(btn => {
+        const text = (btn.textContent || '').toLowerCase();
+        const tab = (btn.getAttribute('data-tab') || '').toLowerCase();
+        if (text.includes('add item') || tab.includes('add-item')) {
+            btn.addEventListener('click', () => setTimeout(() => populateNextSku(true), 100));
+        }
+    });
+
+    const skuInput =
+        document.getElementById('sku') ||
+        document.getElementById('item-sku') ||
+        document.querySelector('input[name="sku"]');
+
+    if (skuInput) {
+        skuInput.setAttribute('inputmode', 'numeric');
+        skuInput.setAttribute('autocomplete', 'off');
+    }
+});
+/* --- End Auto SKU Fix --- */
 
 </script>
 <script>
 let inventory=[], templates=[], editingItemId=null, editingTemplateId=null, descriptionEditor, templateEditor;
 const toolbar=[[{'size':['10px','12px','14px','16px','18px','24px']}],['bold','italic','underline','strike'],[{'list':'ordered'},{'list':'bullet'}],[{'color':[]},{'background':[]}],['clean']];
 function safeParse(k){try{return JSON.parse(localStorage.getItem(k)||'[]')}catch{return[]}}
-function save(){localStorage.setItem('inventory',JSON.stringify(inventory));localStorage.setItem('templates',JSON.stringify(templates));renderAll()}
+function save(){localStorage.setItem('inventory',JSON.stringify(inventory));
+        setTimeout(() => populateNextSku(true), 50);localStorage.setItem('templates',JSON.stringify(templates));renderAll()}
 function money(n){return '$'+Number(n||0).toFixed(2)}
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function strip(html){const d=document.createElement('div');d.innerHTML=html||'';return d.textContent||''}
